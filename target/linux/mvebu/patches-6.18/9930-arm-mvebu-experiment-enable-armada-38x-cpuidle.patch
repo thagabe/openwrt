@@ -1,0 +1,36 @@
+--- a/arch/arm/mach-mvebu/pmsu.c
++++ b/arch/arm/mach-mvebu/pmsu.c
+@@ -329,6 +329,12 @@
+ 
+ 	cpu_do_idle();
+ 
++	/*
++	 * If WFI returns, the power-down request did not complete and
++	 * the resume path did not restore the SCU power state.
++	 */
++	scu_power_mode(mvebu_get_scu_base(), SCU_PM_NORMAL);
++
+ 	return 1;
+ }
+ 
+@@ -428,9 +434,6 @@
+ 	void __iomem *mpsoc_base;
+ 	u32 reg;
+ 
+-	pr_warn("CPU idle is currently broken on Armada 38x: disabling\n");
+-	return 0;
+-
+ 	np = of_find_compatible_node(NULL, NULL,
+ 				     "marvell,armada-380-coherency-fabric");
+ 	if (!np)
+--- a/drivers/cpuidle/cpuidle-mvebu-v7.c
++++ b/drivers/cpuidle/cpuidle-mvebu-v7.c
+@@ -99,7 +99,7 @@
+ 		.exit_latency		= 10,
+ 		.power_usage		= 5,
+ 		.target_residency	= 100,
+-		.flags			= CPUIDLE_FLAG_RCU_IDLE,
++		.flags			= CPUIDLE_FLAG_RCU_IDLE | CPUIDLE_FLAG_OFF,
+ 		.name			= "Idle",
+ 		.desc			= "CPU and SCU power down",
+ 	},

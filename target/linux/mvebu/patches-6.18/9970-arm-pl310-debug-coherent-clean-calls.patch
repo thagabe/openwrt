@@ -1,0 +1,44 @@
+--- a/arch/arm/mm/cache-l2x0.c
++++ b/arch/arm/mm/cache-l2x0.c
+@@ -5,6 +5,7 @@
+  * Copyright (C) 2007 ARM Limited
+  */
+ #include <linux/cpu.h>
++#include <linux/debugfs.h>
+ #include <linux/err.h>
+ #include <linux/init.h>
+ #include <linux/smp.h>
+@@ -213,6 +214,24 @@
+ 	__l2c210_cache_sync(base);
+ }
+ 
++static atomic_t l2c310_coherent_clean_calls = ATOMIC_INIT(0);
++
++static void l2c310_coherent_clean_range_debug(unsigned long start,
++					      unsigned long end)
++{
++	atomic_inc(&l2c310_coherent_clean_calls);
++	l2c210_clean_range(start, end);
++}
++
++static int __init l2c310_coherent_clean_debug_init(void)
++{
++	debugfs_create_atomic_t("l2c310_coherent_clean_calls", 0444, NULL,
++				&l2c310_coherent_clean_calls);
++	return 0;
++}
++late_initcall(l2c310_coherent_clean_debug_init);
++
++
+ static void l2c210_flush_range(unsigned long start, unsigned long end)
+ {
+ 	void __iomem *base = l2x0_base;
+@@ -1341,7 +1360,7 @@
+ 	.unlock = l2c310_unlock,
+ 	.outer_cache = {
+ 		.inv_range   = l2c210_inv_range,
+-		.clean_range = l2c210_clean_range,
++		.clean_range = l2c310_coherent_clean_range_debug,
+ 		.flush_range = l2c210_flush_range,
+ 		.flush_all   = l2c210_flush_all,
+ 		.disable     = l2c310_disable,

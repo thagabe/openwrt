@@ -1,0 +1,133 @@
+--- a/arch/arm/mach-mvebu/pmsu.c
++++ b/arch/arm/mach-mvebu/pmsu.c
+@@ -20,6 +20,8 @@
+ #include <linux/cpu_pm.h>
+ #include <linux/delay.h>
+ #include <linux/init.h>
++#include <linux/debugfs.h>
++#include <linux/seq_file.h>
+ #include <linux/io.h>
+ #include <linux/kernel.h>
+ #include <linux/kthread.h>
+@@ -311,18 +313,80 @@
+ 	return cpu_suspend(deepidle, armada_370_xp_pmsu_idle_enter);
+ }
+ 
++
++/*
++ * Temporary Armada 38x cpuidle diagnostics.
++ *
++ * Counters are only updated while normal coherent memory access is safe.
++ */
++struct armada_38x_idle_debug {
++	unsigned long pm_enter;
++	unsigned long suspend_enter;
++	unsigned long do_suspend_enter;
++	unsigned long pmsu_prepared;
++	unsigned long coherency_begin;
++	unsigned long suspend_return;
++	unsigned long pm_exit;
++	unsigned long pmsu_exit;
++};
++
++static DEFINE_PER_CPU(struct armada_38x_idle_debug, armada_38x_idle_debug);
++
++static int armada_38x_idle_debug_show(struct seq_file *s, void *unused)
++{
++	int cpu;
++
++	for_each_possible_cpu(cpu) {
++		struct armada_38x_idle_debug *d;
++
++		d = per_cpu_ptr(&armada_38x_idle_debug, cpu);
++
++		seq_printf(s,
++			   "cpu%d pm_in=%lu susp_in=%lu do_in=%lu "
++			   "prep=%lu coh_in=%lu susp_out=%lu "
++			   "pm_out=%lu pmsu_out=%lu\n",
++			   cpu,
++			   READ_ONCE(d->pm_enter),
++			   READ_ONCE(d->suspend_enter),
++			   READ_ONCE(d->do_suspend_enter),
++			   READ_ONCE(d->pmsu_prepared),
++			   READ_ONCE(d->coherency_begin),
++			   READ_ONCE(d->suspend_return),
++			   READ_ONCE(d->pm_exit),
++			   READ_ONCE(d->pmsu_exit));
++	}
++
++	return 0;
++}
++
++static int armada_38x_idle_debug_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, armada_38x_idle_debug_show, NULL);
++}
++
++static const struct file_operations armada_38x_idle_debug_fops = {
++	.open		= armada_38x_idle_debug_open,
++	.read		= seq_read,
++	.llseek		= seq_lseek,
++	.release	= single_release,
++};
++
+ int armada_38x_do_cpu_suspend(unsigned long deepidle)
+ {
+ 	unsigned long flags = 0;
+ 
++	this_cpu_inc(armada_38x_idle_debug.do_suspend_enter);
++
+ 	if (deepidle)
+ 		flags |= PMSU_PREPARE_DEEP_IDLE;
+ 
+ 	mvebu_v7_pmsu_idle_prepare(flags);
++	this_cpu_inc(armada_38x_idle_debug.pmsu_prepared);
+ 	/*
+ 	 * Already flushed cache, but do it again as the outer cache
+ 	 * functions dirty the cache with spinlocks
+ 	 */
++	this_cpu_inc(armada_38x_idle_debug.coherency_begin);
+ 	v7_exit_coherency_flush(louis);
+ 
+ 	scu_power_mode(mvebu_get_scu_base(), SCU_PM_POWEROFF);
+@@ -340,7 +404,15 @@
+ 
+ static int armada_38x_cpu_suspend(unsigned long deepidle)
+ {
+-	return cpu_suspend(false, armada_38x_do_cpu_suspend);
++	int ret;
++
++	this_cpu_inc(armada_38x_idle_debug.suspend_enter);
++
++	ret = cpu_suspend(false, armada_38x_do_cpu_suspend);
++
++	this_cpu_inc(armada_38x_idle_debug.suspend_return);
++
++	return ret;
+ }
+ 
+ /* No locking is needed because we only access per-CPU registers */
+@@ -370,9 +442,13 @@
+ {
+ 	if (action == CPU_PM_ENTER) {
+ 		unsigned int hw_cpu = cpu_logical_map(smp_processor_id());
++
++		this_cpu_inc(armada_38x_idle_debug.pm_enter);
+ 		mvebu_pmsu_set_cpu_boot_addr(hw_cpu, mvebu_cpu_resume);
+ 	} else if (action == CPU_PM_EXIT) {
++		this_cpu_inc(armada_38x_idle_debug.pm_exit);
+ 		mvebu_v7_pmsu_idle_exit();
++		this_cpu_inc(armada_38x_idle_debug.pmsu_exit);
+ 	}
+ 
+ 	return NOTIFY_OK;
+@@ -531,6 +607,9 @@
+ 		platform_device_register(&mvebu_v7_cpuidle_device);
+ 	cpu_pm_register_notifier(&mvebu_v7_cpu_pm_notifier);
+ 
++	debugfs_create_file("mvebu_cpuidle_counters", 0444, NULL, NULL,
++			    &armada_38x_idle_debug_fops);
++
+ 	return 0;
+ }
+ 
