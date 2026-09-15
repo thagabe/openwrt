@@ -1,25 +1,10 @@
 --- a/arch/arm/kernel/suspend.c
 +++ b/arch/arm/kernel/suspend.c
-@@ -179,8 +179,12 @@
- 
- 	memset(vaddr, 0, size);
- 
--	sleep_save_sp.save_ptr_stash = (u32 *)base;
--	sleep_save_sp.save_ptr_stash_phys = (u32)paddr;
-+	/*
-+	 * Diagnostic only:
-+	 * leave generic ARM's existing save-pointer stash untouched.
-+	 * We are isolating whether replacing sleep_save_sp causes the
-+	 * normal-boot regression.
-+	 */
- 
- 	cpu_suspend_nc_ctx = base + stash_size;
- 	cpu_suspend_nc_ctx_phys = paddr + stash_size;
 @@ -191,7 +195,6 @@
  	 * cpu_resume reads sleep_save_sp itself with the MMU off, so this
  	 * one-time change must be committed before any suspend attempt.
  	 */
 -	sync_cache_w(&sleep_save_sp);
  	dsb();
- 
+
  	cpu_suspend_nc_enabled = true;
