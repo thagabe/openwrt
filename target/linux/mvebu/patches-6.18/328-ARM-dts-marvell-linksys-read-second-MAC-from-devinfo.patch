@@ -1,0 +1,95 @@
+Subject: [PATCH] ARM: dts: marvell: linksys: read the second MAC from devinfo
+
+The bootloader does not always initialize the second Ethernet MAC on
+Armada 385 Linksys boards. Read the factory hw_mac_addr variable using
+the existing ASCII environment NVMEM layout, without a MAC increment.
+This is the factory base address used for LAN by the board defaults.
+
+Share the consumer description while keeping the factory cells with their
+partitions in the individual board files. DSA user ports can then inherit a stable
+address when they are registered, without a userspace MAC setter.
+
+---
+--- a/arch/arm/boot/dts/marvell/armada-385-linksys.dtsi
++++ b/arch/arm/boot/dts/marvell/armada-385-linksys.dtsi
+@@ -116,6 +116,8 @@
+ };
+ 
+ &eth2 {
++	nvmem-cells = <&hw_mac_addr 0>;
++	nvmem-cell-names = "mac-address";
+ 	status = "okay";
+ 	phy-mode = "sgmii";
+ 	buffer-manager = <&bm>;
+--- a/arch/arm/boot/dts/marvell/armada-385-linksys-caiman.dts
++++ b/arch/arm/boot/dts/marvell/armada-385-linksys-caiman.dts
+@@ -98,6 +98,15 @@
+ 			label = "devinfo";
+ 			reg = <0x900000 0x100000>;   /* 1MiB */
+ 			read-only;
++
++			nvmem-layout {
++				compatible = "ascii-eq-delim-env";
++
++				hw_mac_addr: hw_mac_addr {
++					compatible = "mac-base";
++					#nvmem-cell-cells = <1>;
++				};
++			};
+ 		};
+ 
+ 		/* kernel1 overlaps with rootfs1 by design */
+--- a/arch/arm/boot/dts/marvell/armada-385-linksys-cobra.dts
++++ b/arch/arm/boot/dts/marvell/armada-385-linksys-cobra.dts
+@@ -99,6 +99,15 @@
+ 			label = "devinfo";
+ 			reg = <0x900000 0x100000>;   /* 1MiB */
+ 			read-only;
++
++			nvmem-layout {
++				compatible = "ascii-eq-delim-env";
++
++				hw_mac_addr: hw_mac_addr {
++					compatible = "mac-base";
++					#nvmem-cell-cells = <1>;
++				};
++			};
+ 		};
+ 
+ 		/* kernel1 overlaps with rootfs1 by design */
+--- a/arch/arm/boot/dts/marvell/armada-385-linksys-rango.dts
++++ b/arch/arm/boot/dts/marvell/armada-385-linksys-rango.dts
+@@ -106,6 +106,15 @@
+ 			label = "devinfo";
+ 			reg = <0x7e0000 0x40000>;   /* 256KiB */
+ 			read-only;
++
++			nvmem-layout {
++				compatible = "ascii-eq-delim-env";
++
++				hw_mac_addr: hw_mac_addr {
++					compatible = "mac-base";
++					#nvmem-cell-cells = <1>;
++				};
++			};
+ 		};
+ 
+ 		partition@820000 {
+--- a/arch/arm/boot/dts/marvell/armada-385-linksys-shelby.dts
++++ b/arch/arm/boot/dts/marvell/armada-385-linksys-shelby.dts
+@@ -99,6 +99,15 @@
+ 			label = "devinfo";
+ 			reg = <0x900000 0x100000>;   /* 1MiB */
+ 			read-only;
++
++			nvmem-layout {
++				compatible = "ascii-eq-delim-env";
++
++				hw_mac_addr: hw_mac_addr {
++					compatible = "mac-base";
++					#nvmem-cell-cells = <1>;
++				};
++			};
+ 		};
+ 
+ 		/* kernel1 overlaps with rootfs1 by design */

@@ -1,0 +1,86 @@
+Subject: [PATCH] net: dsa: mv88e6xxx: support changing a local port conduit
+
+Implement port_change_conduit using the common port-based VLAN map and,
+where present, the existing per-port upstream selector operation. These
+are the same hardware operations used during setup; no family-specific
+register layout or board policy is needed.
+
+DSA unoffloads the bridge before calling the driver and migrates host
+addresses, VLANs and bridge state after committing cpu_dp. Program the
+standalone map at this point; subsequent map rebuilds honor the selected
+CPU port. Restore the upstream selector if updating the VLAN map fails.
+
+Reject conduit LAGs and non-local or cascaded paths rather than implying
+support for trunk CPU destinations or cross-chip PVT migration.
+
+---
+--- a/drivers/net/dsa/mv88e6xxx/chip.c
++++ b/drivers/net/dsa/mv88e6xxx/chip.c
+@@ -1601,6 +1601,59 @@
+ 	return mv88e6xxx_port_set_vlan_map(chip, port, output_ports);
+ }
+ 
++static int mv88e6xxx_port_change_conduit(struct dsa_switch *ds, int port,
++					 struct net_device *conduit,
++					 struct netlink_ext_ack *extack)
++{
++	struct mv88e6xxx_chip *chip = ds->priv;
++	const struct mv88e6xxx_ops *ops = chip->info->ops;
++	struct dsa_port *cpu_dp = conduit->dsa_ptr, *dp;
++	int err, tmp;
++
++	if (netif_is_lag_master(conduit)) {
++		NL_SET_ERR_MSG_MOD(extack, "LAG conduits are not supported");
++		return -EOPNOTSUPP;
++	}
++
++	if (!cpu_dp || cpu_dp->ds != ds || !dsa_port_is_cpu(cpu_dp)) {
++		NL_SET_ERR_MSG_MOD(extack, "Conduit must be a local CPU port");
++		return -EOPNOTSUPP;
++	}
++
++	dsa_switch_for_each_port(dp, ds) {
++		if (!dsa_port_is_dsa(dp))
++			continue;
++
++		NL_SET_ERR_MSG_MOD(extack,
++				   "Conduit changes on cascaded switches are not supported");
++		return -EOPNOTSUPP;
++	}
++
++	/* DSA has temporarily unoffloaded the bridge and will rebuild its
++	 * state after committing the new cpu_dp. The port is standalone
++	 * here, so only the new CPU port belongs in its VLAN map.
++	 */
++	mv88e6xxx_reg_lock(chip);
++	if (ops->port_set_upstream_port) {
++		err = ops->port_set_upstream_port(chip, port, cpu_dp->index);
++		if (err)
++			goto unlock;
++	}
++
++	err = mv88e6xxx_port_set_vlan_map(chip, port, BIT(cpu_dp->index));
++	if (err && ops->port_set_upstream_port) {
++		tmp = ops->port_set_upstream_port(chip, port,
++						dsa_upstream_port(ds, port));
++		if (tmp)
++			dev_err(ds->dev, "p%d: failed to restore CPU port: %pe\n",
++				port, ERR_PTR(tmp));
++	}
++unlock:
++	mv88e6xxx_reg_unlock(chip);
++
++	return err;
++}
++
+ static void mv88e6xxx_port_stp_state_set(struct dsa_switch *ds, int port,
+ 					 u8 state)
+ {
+@@ -7182,6 +7235,7 @@
+ 	.get_tag_protocol	= mv88e6xxx_get_tag_protocol,
+ 	.change_tag_protocol	= mv88e6xxx_change_tag_protocol,
+ 	.conduit_state_change	= mv88e6xxx_conduit_state_change,
++	.port_change_conduit	= mv88e6xxx_port_change_conduit,
+ 	.setup			= mv88e6xxx_setup,
+ 	.teardown		= mv88e6xxx_teardown,
+ 	.port_setup		= mv88e6xxx_port_setup,

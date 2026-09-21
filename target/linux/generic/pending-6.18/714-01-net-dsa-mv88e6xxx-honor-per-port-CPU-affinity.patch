@@ -1,0 +1,43 @@
+Subject: [PATCH] net: dsa: mv88e6xxx: honor per-port CPU affinity in VLAN maps
+
+Use the assigned upstream port when rebuilding a local standalone port's
+VLAN map. Otherwise a bridge leave overwrites a previously selected CPU
+port with the switch-wide default.
+
+For local bridged ingress, retain the bridge members and DSA links but
+include only the assigned CPU port. Flooding to every CPU port delivers
+duplicate frames to the host. Similarly, exclude CPU ports from virtual
+bridge PVT entries used for TX forwarding offload: these frames originate
+at the host and must not be reflected through another CPU link.
+
+Leave the existing remote physical-port PVT routing unchanged.
+
+---
+--- a/drivers/net/dsa/mv88e6xxx/chip.c
++++ b/drivers/net/dsa/mv88e6xxx/chip.c
+@@ -1570,15 +1570,20 @@
+ 	/* Frames from standalone user ports can only egress on the
+ 	 * upstream port.
+ 	 */
+-	if (!dsa_port_bridge_dev_get(dp))
++	if (!dsa_port_bridge_dev_get(dp)) {
++		if (dp->ds == ds)
++			return BIT(dsa_upstream_port(ds, dp->index));
++
+ 		return BIT(dsa_switch_upstream_port(ds));
++	}
+ 
+-	/* Frames from bridged user ports can egress any local DSA
+-	 * links and CPU ports, as well as any local member of their
+-	 * bridge group.
++	/* Locally received frames must reach only the assigned CPU port.
++	 * Frames injected on behalf of a virtual bridge must not be sent
++	 * back to any CPU port. Preserve the cross-chip forwarding paths.
+ 	 */
+ 	dsa_switch_for_each_port(other_dp, ds)
+-		if (other_dp->type == DSA_PORT_TYPE_CPU ||
++		if ((dsa_port_is_cpu(other_dp) && dev <= dst->last_switch &&
++		     (dp->ds != ds || other_dp == dp->cpu_dp)) ||
+ 		    other_dp->type == DSA_PORT_TYPE_DSA ||
+ 		    dsa_port_bridge_same(dp, other_dp))
+ 			pvlan |= BIT(other_dp->index);

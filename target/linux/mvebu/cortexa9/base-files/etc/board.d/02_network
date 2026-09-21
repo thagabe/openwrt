@@ -24,13 +24,21 @@ mvebu_setup_interfaces()
 		;;
 	fortinet,fg-30e|\
 	fortinet,fwf-30e|\
+	linksys,wrt1900ac-v1)
+		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" "wan"
+		;;
 	linksys,wrt1200ac|\
-	linksys,wrt1900ac-v1|\
 	linksys,wrt1900ac-v2|\
 	linksys,wrt1900acs|\
 	linksys,wrt3200acm|\
 	linksys,wrt32x)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" "wan"
+		# The enabled MACs are eth0 (&eth0) and eth1 (&eth2).
+		ucidef_set_network_device_conduit "lan1" "eth1"
+		ucidef_set_network_device_conduit "lan2" "eth1"
+		ucidef_set_network_device_conduit "lan3" "eth1"
+		ucidef_set_network_device_conduit "lan4" "eth1"
+		ucidef_set_network_device_conduit "wan" "eth0"
 		;;
 	fortinet,fg-50e|\
 	fortinet,fg-51e|\

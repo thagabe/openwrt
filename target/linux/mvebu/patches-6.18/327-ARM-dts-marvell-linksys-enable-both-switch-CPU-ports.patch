@@ -1,0 +1,40 @@
+Subject: [PATCH] ARM: dts: marvell: linksys: enable both switch CPU links
+
+The Armada 385 Linksys boards connect switch port 5 to the SGMII MAC
+and port 6 to the RGMII MAC. OpenWrt disabled the former when switching
+to DSA because multiple CPU ports were not supported and that MAC did
+not have a bootloader-provided address.
+
+Restore the port 5 link in the shared Linksys description, keeping the
+existing port 6 connection. Conduit assignment is userspace policy.
+
+---
+--- a/arch/arm/boot/dts/marvell/armada-385-linksys.dtsi
++++ b/arch/arm/boot/dts/marvell/armada-385-linksys.dtsi
+@@ -116,7 +116,7 @@
+ };
+ 
+ &eth2 {
+-	status = "disabled";
++	status = "okay";
+ 	phy-mode = "sgmii";
+ 	buffer-manager = <&bm>;
+ 	bm,pool-long = <2>;
+@@ -198,6 +198,17 @@
+ 				label = "wan";
+ 			};
+ 
++			ethernet-port@5 {
++				reg = <5>;
++				phy-mode = "sgmii";
++				ethernet = <&eth2>;
++
++				fixed-link {
++					speed = <1000>;
++					full-duplex;
++				};
++			};
++
+ 			ethernet-port@6 {
+ 				reg = <6>;
+ 				phy-mode = "sgmii";
